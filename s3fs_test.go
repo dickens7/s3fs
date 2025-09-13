@@ -163,3 +163,36 @@ func TestListDir(t *testing.T) {
 	}
 	_ = dh.Close()
 }
+
+func TestCopyDir(t *testing.T) {
+	mc := newMock("b1")
+	fsys := NewS3Fs("b1", mc)
+	// source structure
+	f1, _ := fsys.Create("src/a.txt")
+	f1.Write([]byte("A"))
+	f1.Close()
+	f2, _ := fsys.Create("src/sub/b.txt")
+	f2.Write([]byte("BB"))
+	f2.Close()
+	f3, _ := fsys.Create("src/sub/deeper/c.txt")
+	f3.Write([]byte("CCC"))
+	f3.Close()
+
+	if err := fsys.CopyDir("src", "dst"); err != nil {
+		t.Fatalf("copydir: %v", err)
+	}
+
+	// verify flat file
+	st1, err := fsys.Stat("dst/a.txt")
+	if err != nil || st1.Size() != 1 {
+		t.Fatalf("dst/a.txt bad: %v %d", err, st1.Size())
+	}
+	st2, err := fsys.Stat("dst/sub/b.txt")
+	if err != nil || st2.Size() != 2 {
+		t.Fatalf("dst/sub/b.txt bad: %v %d", err, st2.Size())
+	}
+	st3, err := fsys.Stat("dst/sub/deeper/c.txt")
+	if err != nil || st3.Size() != 3 {
+		t.Fatalf("dst/sub/deeper/c.txt bad: %v %d", err, st3.Size())
+	}
+}

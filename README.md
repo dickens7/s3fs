@@ -9,6 +9,7 @@
 - 实现核心文件操作：Create / Open / Stat / Rename / Remove / RemoveAll / Mkdir / MkdirAll
 - 文件写入为内存缓冲，`Close()` 时一次性 `PutObject`
 - 目录列举使用 `ListObjectsV2` + `Delimiter`，只返回直接子节点
+- 目录递归复制：`CopyDir(src, dst)`
 
 ## 尚未实现 / TODO
 
@@ -58,6 +59,9 @@ func main() {
  entries, _ := dh.Readdir(0)
  for _, e := range entries { fmt.Println(e.Name(), e.IsDir()) }
  dh.Close()
+
+ // 复制整个目录 (demo -> demo_copy)
+ if err := fs.CopyDir("demo", "demo_copy"); err != nil { panic(err) }
 }
 ```
 

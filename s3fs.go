@@ -50,6 +50,85 @@ type S3Fs struct {
 	useDirMark bool // 目录是否写一个占位对象 (key/)
 }
 
+// CopyDir 递归复制 src 目录(或前缀)到 dst 目录 (dst 不存在则创建前缀)，不支持跨 bucket。
+// 规则:
+// - src 与 dst 不能相同
+// - 忽略目录 marker 对象，仅复制实际文件对象
+// - 自动添加尾部 '/'
+func (f *S3Fs) CopyDir(src, dst string) error {
+	if src == "" || src == "." {
+		src = "/"
+	}
+	if dst == "" || dst == "." {
+		dst = "/"
+	}
+	if src == dst {
+		return errors.New("src and dst are identical")
+	}
+	// 规范化
+	if !strings.HasSuffix(src, "/") {
+		src += "/"
+	}
+	if !strings.HasSuffix(dst, "/") {
+		dst += "/"
+	}
+	srcKey := f.toKey(src)
+	if srcKey != "" && !strings.HasSuffix(srcKey, "/") {
+		srcKey += "/"
+	}
+	dstKey := f.toKey(dst)
+	if dstKey != "" && !strings.HasSuffix(dstKey, "/") {
+		dstKey += "/"
+	}
+
+	delim := "/"
+	var token *string
+	ctx := f.ctx()
+	for {
+		out, err := f.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: &f.bucket, Prefix: &srcKey, ContinuationToken: token, Delimiter: &delim})
+		if err != nil {
+			return err
+		}
+		// copy files directly under current prefix
+		for _, obj := range out.Contents {
+			if obj.Key == nil {
+				continue
+			}
+			k := *obj.Key
+			if k == srcKey { // skip marker
+				continue
+			}
+			rel := strings.TrimPrefix(k, srcKey)
+			if rel == "" || strings.HasSuffix(rel, "/") || strings.Contains(rel, "/") {
+				// skip; deeper levels handled separately via recursion approach below
+				continue
+			}
+			newKey := dstKey + rel
+			copySource := f.bucket + "/" + k
+			if _, err := f.client.CopyObject(ctx, &s3.CopyObjectInput{Bucket: &f.bucket, Key: &newKey, CopySource: &copySource}); err != nil {
+				return err
+			}
+		}
+		// recurse for each sub directory
+		for _, cp := range out.CommonPrefixes {
+			if cp.Prefix == nil {
+				continue
+			}
+			subSrc := src + strings.TrimPrefix(*cp.Prefix, srcKey)
+			subDst := dst + strings.TrimPrefix(*cp.Prefix, srcKey)
+			if err := f.CopyDir(subSrc, subDst); err != nil {
+				return err
+			}
+		}
+		if out.IsTruncated != nil && *out.IsTruncated && out.NextContinuationToken != nil {
+			token = out.NextContinuationToken
+			continue
+		}
+		break
+	}
+	return nil
+}
+
 // Option 配置
 
 type Option func(*S3Fs)
