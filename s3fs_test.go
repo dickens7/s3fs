@@ -157,11 +157,40 @@ func TestListDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open dir: %v", err)
 	}
-	entries, _ := dh.Readdir(0)
+	entries, _ := dh.Readdir(0) // unchanged line
 	if len(entries) != 2 {
 		t.Fatalf("want 2 entries got %d", len(entries))
 	}
 	_ = dh.Close()
+}
+
+func TestReaddirNegative(t *testing.T) {
+	mc := newMock("b1")
+	fsys := NewS3Fs("b1", mc)
+	w1, _ := fsys.Create("x/1.txt")
+	w1.Write([]byte("1"))
+	w1.Close()
+	w2, _ := fsys.Create("x/2.txt")
+	w2.Write([]byte("2"))
+	w2.Close()
+	w3, _ := fsys.Create("x/sub/3.txt")
+	w3.Write([]byte("3"))
+	w3.Close()
+	fsys.Mkdir("x", 0o755)
+
+	d, err := fsys.Open("x/")
+	if err != nil {
+		t.Fatalf("open dir: %v", err)
+	}
+	// count=-1 获取全部，err 应为 nil
+	infos, err := d.Readdir(-1)
+	if err != nil {
+		t.Fatalf("readdir(-1) err: %v", err)
+	}
+	if len(infos) != 3 {
+		t.Fatalf("want 3 entries got %d", len(infos))
+	}
+	_ = d.Close()
 }
 
 func TestCopyDir(t *testing.T) {

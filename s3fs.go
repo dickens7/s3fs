@@ -410,19 +410,26 @@ func (f *s3File) Readdir(count int) ([]fs.FileInfo, error) {
 	if !f.dir {
 		return nil, errors.New("not a directory")
 	}
+	// Go 语义：n <= 0 返回所有剩余项，err=nil
+	if count <= 0 {
+		if f.children == nil {
+			return []fs.FileInfo{}, nil
+		}
+		res := f.children
+		f.children = nil
+		return res, nil
+	}
+	// n > 0：返回至多 n 个；若到达末尾则 err=io.EOF
 	if f.children == nil {
 		return []fs.FileInfo{}, io.EOF
 	}
-	if count <= 0 || count > len(f.children) {
+	if count >= len(f.children) {
 		res := f.children
 		f.children = nil
 		return res, io.EOF
 	}
 	res := f.children[:count]
 	f.children = f.children[count:]
-	if len(f.children) == 0 {
-		return res, io.EOF
-	}
 	return res, nil
 }
 func (f *s3File) Readdirnames(n int) ([]string, error) {
